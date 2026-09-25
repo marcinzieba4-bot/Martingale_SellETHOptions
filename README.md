@@ -12,11 +12,16 @@ martingale sizing, where each month's size is set so the premium covers the loss
 
 **Results and conclusions: [results/REPORT.md](results/REPORT.md)**
 
+**Chosen setup: 1b + 3b on one account, martingale, lean capital, with full risk statistics and a Monte Carlo of
+liquidation risk: [results/PORTFOLIO.md](results/PORTFOLIO.md)**
+
 | File | What it does |
 |---|---|
 | `fetch_data.py` | Downloads real Deribit data into `data/`: settlement prices, hourly ETH, funding, DVOL and ATM option trades |
 | `backtest.py` | Runs the simulation, including the margin and capital checks |
 | `report.py` | Runs the backtest and writes the charts and `results/REPORT.md` |
+| `portfolio.py` | 1b + 3b portfolio engine: combined hourly margin, lean capital, risk statistics, block-bootstrap Monte Carlo |
+| `portfolio_report.py` | Runs the portfolio and writes its charts and `results/PORTFOLIO.md` |
 
 ```bash
 pip install pandas numpy matplotlib

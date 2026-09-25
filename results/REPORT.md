@@ -1,5 +1,7 @@
 # Martingale ETH option selling: backtest, Jan 2023 to Sep 2026
 
+> **Chosen setup (1b + 3b on one account, martingale, lean capital, risk statistics and Monte Carlo): [PORTFOLIO.md](PORTFOLIO.md)**
+
 Every month, on Deribit's monthly expiry (the last Friday, 08:00 UTC), the strategy sells the at-the-money ETH
 option that expires one month later. It is held to expiry and settled at Deribit's real delivery price.
 "Last month" means the expiry-to-expiry month that just ended.
