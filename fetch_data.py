@@ -4,6 +4,7 @@ Outputs (in ./data):
   delivery_prices.csv  - daily ETH index settlement price (08:00 UTC, what options settle on)
   eth_hourly.csv       - hourly ETH-PERPETUAL OHLC (used for intramonth mark-to-market / margin)
   dvol_hourly.csv      - hourly ETH DVOL (30d implied-vol index)
+  funding_hourly.csv   - hourly ETH-PERPETUAL funding (cost/income of the perp hedge)
   atm_quotes.csv       - for every monthly roll: ATM strike and the market implied vol / mark
                          of the next monthly ETH option, taken from real Deribit trades
 """
@@ -103,6 +104,18 @@ def fetch_hourly():
         df.drop(columns="ticks").to_csv(DATA / f"{name}.csv", index=False)
 
 
+def fetch_funding():
+    rows, t = [], START
+    while t < END:
+        t2 = min(t + dt.timedelta(days=30), END)
+        rows += get(API, "get_funding_rate_history", instrument_name="ETH-PERPETUAL",
+                    start_timestamp=ms(t), end_timestamp=ms(t2))
+        t = t2
+    df = pd.DataFrame(rows).drop_duplicates("timestamp").sort_values("timestamp")
+    df.insert(0, "time", pd.to_datetime(df.timestamp, unit="ms", utc=True))
+    df[["time", "interest_1h", "interest_8h"]].to_csv(DATA / "funding_hourly.csv", index=False)
+
+
 def fetch_atm_quotes(delivery):
     """For each roll (monthly expiry E_i at 08:00 UTC) find the ATM strike of the next monthly
     expiry E_{i+1} and read its market price from the first trades after 08:00."""
@@ -151,4 +164,6 @@ if __name__ == "__main__":
     d = fetch_delivery_prices()
     if not (DATA / "dvol_hourly.csv").exists():
         fetch_hourly()
-    fetch_atm_quotes(d)
+    fetch_funding()
+    if not (DATA / "atm_quotes.csv").exists():
+        fetch_atm_quotes(d)
