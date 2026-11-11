@@ -5,6 +5,8 @@ Outputs (in ./data):
   eth_hourly.csv       - hourly ETH-PERPETUAL OHLC (used for intramonth mark-to-market / margin)
   dvol_hourly.csv      - hourly ETH DVOL (30d implied-vol index)
   funding_hourly.csv   - hourly ETH-PERPETUAL funding (cost/income of the perp hedge)
+  eth_otm_put_quotes.csv - for every monthly roll: the 15% and 20% OTM put of the next monthly expiry
+                         (real trades), used for the tail-put hedges in hedges.py
   atm_quotes.csv       - for every monthly roll: ATM strike and the market implied vol / mark
                          of the next monthly ETH option, taken from real Deribit trades
 """
@@ -170,9 +172,41 @@ def fetch_atm_quotes(delivery):
     out.to_csv(path, index=False)
 
 
+def fetch_otm_put_quotes(delivery, moneyness=(0.85, 0.80)):
+    """Price of the OTM put (strike nearest moneyness x spot) of the next monthly expiry at each roll,
+    from the first real trades after 08:00 UTC (mark price is in ETH = premium as a fraction of spot)."""
+    px = delivery.set_index("date")["price"]
+    exps = monthly_expiries()
+    rows = []
+    for sell, expiry in zip(exps[:-1], exps[1:]):
+        s0 = float(px[pd.Timestamp(sell)])
+        t0 = dt.datetime(sell.year, sell.month, sell.day, 8, tzinfo=dt.timezone.utc)
+        for mny in moneyness:
+            target = s0 * mny
+            cands = sorted({round(target / g) * g for g in (25, 50, 100)} |
+                           {round(target / 50) * 50 + d for d in (-50, 50)}, key=lambda k: abs(k - target))
+            for k in cands[:5]:
+                res = get(HIST, "get_last_trades_by_instrument_and_time", instrument_name=instrument(expiry, k, "P"),
+                          start_timestamp=ms(t0), end_timestamp=ms(t0 + dt.timedelta(hours=24)), count=50,
+                          sorting="asc")
+                if res and res["trades"]:
+                    tr = pd.DataFrame(res["trades"]).sort_values("timestamp").head(10)
+                    rows.append(dict(sell_date=sell, expiry=expiry, spot=s0, moneyness=mny, strike=k,
+                                     mark_eth=tr.mark_price.median(), iv=tr.iv.median(),
+                                     index=tr.index_price.median(), n_trades=len(res["trades"]),
+                                     first_trade_min=(tr.timestamp.iloc[0] - ms(t0)) / 60000))
+                    break
+            else:
+                print("no OTM put trades", sell, mny)
+        print(sell, expiry, s0)
+    pd.DataFrame(rows).to_csv(DATA / "eth_otm_put_quotes.csv", index=False)
+
+
 if __name__ == "__main__":
     DATA.mkdir(exist_ok=True)
     d = fetch_delivery_prices()
     fetch_hourly()
     fetch_funding()
     fetch_atm_quotes(d)
+    if not (DATA / "eth_otm_put_quotes.csv").exists():
+        fetch_otm_put_quotes(d)

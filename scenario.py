@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 import combo as cb
+import hedges as hd
 import portfolio as pf
 from backtest import load
 
@@ -57,9 +58,8 @@ def eth_transform(crash_expiry, info):
     return tf
 
 
-def btc_scenario(q, eth, crash_expiry, info):
-    """BTC spread months for the scenario (per 1 BTC), built from the real ones."""
-    bm, _ = cb.btc_months(q, eth)
+def btc_scenario(q, eth, crash_expiry, info, bm):
+    """BTC spread months for the scenario (per 1 BTC), built from the real ones (`bm`)."""
     perp = pd.read_csv(cb.BTC_DIR / "btc_perp_1h.csv", parse_dates=["t"]).set_index("t")["close"]
     quotes = pd.read_csv(cb.BTC_DIR / "btc_put_quotes.csv", parse_dates=["entry"])
     trades = pd.read_csv(cb.BTC_DIR / "btc_spread_trades.csv", parse_dates=["entry", "expiry"])
@@ -83,6 +83,8 @@ def btc_scenario(q, eth, crash_expiry, info):
     for i, b in enumerate(bm):
         if i < c:
             out.append(b)
+        elif i == c and b is None:                       # no BTC trade in the crash month (hedges.btc_skip)
+            out.append(None)
         elif i == c:                                     # the crash month: the real trade, crashed path
             h = hours_of(i)
             tmpl = perp.reindex(u0 + pd.Timedelta(hours=1) + (h - h[0])).ffill().to_numpy()
@@ -132,24 +134,25 @@ def recovery_months(pnl, crash_i, capital):
     return int(after[0]) if len(after) else None
 
 
-def run_scenario(name, first_sale="2022-12-30", eth_cap=None, btc_cap_x=4.0):
+def run_scenario(name, first_sale="2022-12-30", eth_cap=None, btc_cap_x=4.0, hedge="none"):
     info = {}
     if name is None:
         q, eth = load(first_sale)
     else:
         q, eth = load(first_sale, transform=eth_transform(SCENARIOS[name], info))
     months = pf.month_table(q, eth)
+    bm, danger = hd.btc_base(q, eth, months, hedge)
+    months = hd.apply_eth(months, q, eth, hedge, danger)
     if name is None:
-        bm, _ = cb.btc_months(q, eth)
         crash_i = None
     else:
-        bm = btc_scenario(q, eth, SCENARIOS[name], info)
+        bm = btc_scenario(q, eth, SCENARIOS[name], info, bm)
         crash_i = int(np.flatnonzero(q.expiry == SCENARIOS[name])[0])
     seq = list(range(len(months)))
     res = {"both": pf.run(months, seq, detail=True, btc=dict(months=bm, base=BTC_BASE, cap=BTC_BASE * btc_cap_x),
                           eth_cap=eth_cap),
            "eth": pf.run(months, seq, detail=True, eth_cap=eth_cap)}
-    return dict(name=name, q=q, eth=eth, months=months, bm=bm, res=res, crash_i=crash_i, info=info)
+    return dict(name=name, q=q, eth=eth, months=months, bm=bm, res=res, crash_i=crash_i, info=info, danger=danger)
 
 
 def summary(sc, which="both", capital=None, cushion=CUSHION):

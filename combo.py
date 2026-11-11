@@ -25,10 +25,11 @@ BTC_BASES = [0.25, 0.5, 1.0, 2.0]
 CAP_X = 4.0          # BTC recovery size cap, x base (the BTC session's "capped at 1 BTC" for 0.25)
 
 
-def btc_months(q, eth):
-    """BTC spread trade aligned to each ETH month (None = no BTC trade that month), per 1 BTC."""
-    tr = pd.read_csv(BTC_DIR / "btc_spread_trades.csv", parse_dates=["entry", "expiry"])
-    hr = pd.read_csv(BTC_DIR / "btc_spread_hourly.csv", parse_dates=["entry", "time"])
+def btc_months(q, eth, suffix=""):
+    """BTC spread trade aligned to each ETH month (None = no BTC trade that month), per 1 BTC.
+    suffix "" = the 20% wing (recommended), "_w15" = the 15% wing (hedges.py)."""
+    tr = pd.read_csv(BTC_DIR / f"btc_spread_trades{suffix}.csv", parse_dates=["entry", "expiry"])
+    hr = pd.read_csv(BTC_DIR / f"btc_spread_hourly{suffix}.csv", parse_dates=["entry", "time"])
     tr = tr.set_index(tr.expiry.dt.normalize())
     out, info = [], []
     for _, r in q.iterrows():

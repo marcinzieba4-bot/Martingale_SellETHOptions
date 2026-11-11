@@ -18,6 +18,9 @@ stats: [results/COMBO.md](results/COMBO.md)**
 **What if ETH and BTC crash together right after a rally (simulated in Apr and Dec 2024)? Calmar, drawdown and
 capital needed: [results/SCENARIO.md](results/SCENARIO.md)**
 
+**Hedging the "danger months" (ETH puts + BTC spread after a rally of both) so a crash doesn't sink Calmar:
+[results/HEDGE.md](results/HEDGE.md)**
+
 **Chosen setup: 1b + 3b on one account, martingale, lean capital, with full risk statistics and a Monte Carlo of
 liquidation risk: [results/PORTFOLIO.md](results/PORTFOLIO.md)**
 
@@ -30,6 +33,7 @@ liquidation risk: [results/PORTFOLIO.md](results/PORTFOLIO.md)**
 | `portfolio_report.py` | Runs the portfolio and writes its charts and `results/PORTFOLIO.md` |
 | `btc/fetch_btc_spread.py` | Runs the BTC session's own code (SellBTCPuts_3M) to export its recommended put spread month by month into `btc/` |
 | `scenario.py`, `scenario_report.py` | Inserts a joint ETH −35% / BTC −28% crash after the 2024 rallies into the real history and re-runs everything, `results/SCENARIO.md` |
+| `hedges.py`, `hedge_report.py` | Danger-month hedges (ETH tail put, daily delta hedge, narrower BTC wing, skip BTC) tested in the real history and both crash scenarios, `results/HEDGE.md` |
 | `combo.py`, `combo_report.py` | ETH 1b + 3b + BTC put spread on one account: correlation, combined stats, joint crash stress, Monte Carlo, `results/COMBO.md` |
 
 ```bash

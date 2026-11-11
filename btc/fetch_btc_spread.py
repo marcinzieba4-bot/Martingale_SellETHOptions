@@ -32,7 +32,8 @@ import put_spread as ps  # noqa: E402
 from candle_patterns import candle  # noqa: E402
 
 HERE = Path(__file__).parent
-SOLD, WING = 0.10, 0.20
+SOLD = 0.10
+WINGS = {0.20: "", 0.15: "_w15"}   # 20% wing = the recommended version; 15% wing used by hedges.py
 
 
 def main():
@@ -45,26 +46,11 @@ def main():
     prev[exps[0]] = exps[0] - pd.Timedelta(days=28)
     ret = {t0: candle(m, max(prev[t0], pd.Timestamp("2021-12-01")), t0)["ret"] for t0, _ in pairs}
 
-    rows, hourly, sel = [], [], []
-    for t0, t1 in pairs:
-        if abs(ret[t0]) <= ps.BIG:
-            rows.append(dict(entry=t0, expiry=t1, candle_ret=ret[t0], trade=False))
-            continue
-        k1, q1, s0 = ps.pick_put_otm(inst, px, t0, t1, SOLD)
-        k2, q2, _ = ps.pick_put_otm(inst, px, t0, t1, WING)
-        cyc, path = ps.spread_cycle([(-1, k1, q1), (1, k2, q2)], s0, t0, t1, px, perp, dvol, fund, "none")
-        sel.append((cyc, path))
-        credit_net = cyc["prem_usd"] - cyc["fee_entry"]
-        rows.append(dict(entry=t0, expiry=t1, candle_ret=ret[t0], trade=True,
-                         candle="green" if ret[t0] > 0 else "red", spot_entry=s0, spot_expiry=cyc["spot_expiry"],
-                         sold_strike=k1, bought_strike=k2, credit=cyc["prem_usd"], fees_entry=cyc["fee_entry"],
-                         max_loss=(k1 - k2) - credit_net, pnl=cyc["pnl_per_lot"], settled=cyc["settled"]))
-        hourly.append(pd.DataFrame({"entry": t0, "time": path.index, "mtm": path.values}))
-
-    trades = pd.DataFrame(rows)
-    trades.to_csv(HERE / "btc_spread_trades.csv", index=False, float_format="%.4f")
-    pd.concat(hourly).to_csv(HERE / "btc_spread_hourly.csv", index=False, float_format="%.4f")
-
+    for wing, suffix in WINGS.items():
+        sel = export(inst, px, perp, dvol, fund, pairs, ret, wing, suffix)
+        if wing == 0.20:
+            sel20 = sel
+    sel = sel20
     perp.rename("close").rename_axis("t").to_csv(HERE / "btc_perp_1h.csv", float_format="%.2f")
     rows = []
     for key, v in bt._trade_cache.items():
@@ -80,6 +66,29 @@ def main():
         print(mode, ps.evaluate(sel, mode))
     ref = pd.read_csv(os.path.join(BTC_REPO, "results", "put_spread.csv"))
     print(ref[ref.variant.str.startswith("C: 20%")].to_string(index=False))
+
+
+def export(inst, px, perp, dvol, fund, pairs, ret, wing, suffix):
+    rows, hourly, sel = [], [], []
+    for t0, t1 in pairs:
+        if abs(ret[t0]) <= ps.BIG:
+            rows.append(dict(entry=t0, expiry=t1, candle_ret=ret[t0], trade=False))
+            continue
+        k1, q1, s0 = ps.pick_put_otm(inst, px, t0, t1, SOLD)
+        k2, q2, _ = ps.pick_put_otm(inst, px, t0, t1, wing)
+        cyc, path = ps.spread_cycle([(-1, k1, q1), (1, k2, q2)], s0, t0, t1, px, perp, dvol, fund, "none")
+        sel.append((cyc, path))
+        credit_net = cyc["prem_usd"] - cyc["fee_entry"]
+        rows.append(dict(entry=t0, expiry=t1, candle_ret=ret[t0], trade=True,
+                         candle="green" if ret[t0] > 0 else "red", spot_entry=s0, spot_expiry=cyc["spot_expiry"],
+                         sold_strike=k1, bought_strike=k2, credit=cyc["prem_usd"], fees_entry=cyc["fee_entry"],
+                         max_loss=(k1 - k2) - credit_net, pnl=cyc["pnl_per_lot"], settled=cyc["settled"]))
+        hourly.append(pd.DataFrame({"entry": t0, "time": path.index, "mtm": path.values}))
+
+    trades = pd.DataFrame(rows)
+    trades.to_csv(HERE / f"btc_spread_trades{suffix}.csv", index=False, float_format="%.4f")
+    pd.concat(hourly).to_csv(HERE / f"btc_spread_hourly{suffix}.csv", index=False, float_format="%.4f")
+    return sel
 
 
 if __name__ == "__main__":
