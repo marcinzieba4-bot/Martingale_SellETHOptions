@@ -71,7 +71,7 @@ def bs(s, k, t, vol, kind):
     return k * norm_cdf(-d2) - s * norm_cdf(-d1)
 
 
-def load():
+def load(first_sale=FIRST_SALE):
     q = pd.read_csv(DATA / "atm_quotes.csv", parse_dates=["sell_date", "expiry"])
     px = pd.read_csv(DATA / "delivery_prices.csv", parse_dates=["date"]).set_index("date")["price"]
     eth = pd.read_csv(DATA / "eth_hourly.csv", parse_dates=["time"]).set_index("time").tz_localize(None)
@@ -96,7 +96,7 @@ def load():
     t = q.sell_date + pd.Timedelta(hours=8)
     q["prev_low"] = [eth.low[(eth.index >= a) & (eth.index < b)].min() for a, b in zip(t.shift(1), t)]
     q["prev_high"] = [eth.high[(eth.index >= a) & (eth.index < b)].max() for a, b in zip(t.shift(1), t)]
-    q = q[q.sell_date >= FIRST_SALE].reset_index(drop=True)
+    q = q[q.sell_date >= first_sale].reset_index(drop=True)
     return q, eth
 
 

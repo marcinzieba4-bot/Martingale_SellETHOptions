@@ -22,7 +22,9 @@ API = "https://www.deribit.com/api/v2/public/"
 HIST = "https://history.deribit.com/api/v2/public/"
 DATA = Path(__file__).parent / "data"
 
-START = dt.datetime(2022, 11, 1, tzinfo=dt.timezone.utc)   # need Dec-2022 for the first sale + Nov direction
+# from Nov 2021: the main study starts with the Dec-2022 sale, the 2022 months are used for the
+# ETH + BTC combination (btc/), whose BTC side starts with the Dec-2021 sale
+START = dt.datetime(2021, 11, 1, tzinfo=dt.timezone.utc)
 END = dt.datetime(2026, 9, 26, tzinfo=dt.timezone.utc)
 MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
@@ -60,7 +62,7 @@ def last_friday(year, month):
 
 
 def monthly_expiries():
-    out, y, m = [], 2022, 11
+    out, y, m = [], 2021, 11
     while (y, m) <= (2026, 9):
         out.append(last_friday(y, m))
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
@@ -82,7 +84,7 @@ def fetch_delivery_prices():
     df = pd.DataFrame(rows).rename(columns={"delivery_price": "price"})
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
-    df[df.date >= "2022-10-01"].to_csv(DATA / "delivery_prices.csv", index=False)
+    df[(df.date >= "2021-10-01") & (df.date <= END.strftime("%Y-%m-%d"))].to_csv(DATA / "delivery_prices.csv", index=False)
     return df
 
 
@@ -121,8 +123,13 @@ def fetch_atm_quotes(delivery):
     expiry E_{i+1} and read its market price from the first trades after 08:00."""
     px = delivery.set_index("date")["price"]
     exps = monthly_expiries()
+    path = DATA / "atm_quotes.csv"
+    old = pd.read_csv(path, parse_dates=["sell_date"]) if path.exists() else pd.DataFrame(columns=["sell_date"])
+    done = set(old.sell_date.dt.date) if len(old) else set()
     rows = []
     for sell, expiry in zip(exps[:-1], exps[1:]):
+        if sell in done:          # already downloaded: keep it
+            continue
         s0 = float(px[pd.Timestamp(sell)])
         t0 = dt.datetime(sell.year, sell.month, sell.day, 8, tzinfo=dt.timezone.utc)
         step = 50 if s0 < 2000 else 100
@@ -156,14 +163,16 @@ def fetch_atm_quotes(delivery):
             index_at_trades=first.index_price.median(),
         ))
         print(sell, expiry, s0, k, len(tr), round(first.iv.median(), 1))
-    pd.DataFrame(rows).to_csv(DATA / "atm_quotes.csv", index=False)
+    new = pd.DataFrame(rows)
+    new["sell_date"] = pd.to_datetime(new["sell_date"]) if len(new) else new.get("sell_date")
+    out = pd.concat([old, new]).sort_values("sell_date")
+    out["sell_date"] = pd.to_datetime(out.sell_date).dt.date
+    out.to_csv(path, index=False)
 
 
 if __name__ == "__main__":
     DATA.mkdir(exist_ok=True)
     d = fetch_delivery_prices()
-    if not (DATA / "dvol_hourly.csv").exists():
-        fetch_hourly()
+    fetch_hourly()
     fetch_funding()
-    if not (DATA / "atm_quotes.csv").exists():
-        fetch_atm_quotes(d)
+    fetch_atm_quotes(d)

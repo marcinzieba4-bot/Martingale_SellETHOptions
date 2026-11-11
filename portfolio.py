@@ -14,6 +14,8 @@ buffer on top. Returns and risk are measured on that balance.
 Everything is computed per $1 of notional, so a month can be re-used in any order: that is how the
 Monte Carlo (block bootstrap of the 45 real months) estimates the chance of liquidation.
 """
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -57,13 +59,18 @@ def month_table(q, eth):
     return months
 
 
-def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capital=None):
+def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capital=None, btc=None):
     """Run the books over the month sequence `seq` (indices into `months`).
     Returns required capital, P&L per month and, with detail=True, logs and hourly MTM equity.
     With `capital` given, the account is liquidated the first hour its equity falls below
     maintenance margin (or it cannot post margin for the next martingale step): positions are
-    closed at that hour's worst price, trading stops, and `total` is what is left minus capital."""
+    closed at that hour's worst price, trading stops, and `total` is what is left minus capital.
+    `btc` adds the BTC put-spread book (see combo.py): dict(months=[per-month trade or None, aligned
+    with `months`], base=BTC per leg, cap=max BTC per leg). It runs its own loss recovery; its
+    collateral is the spread's max loss (fully secured), its open P&L counts in equity."""
     deficit = {b: 0.0 for b in books}
+    if btc is not None:
+        deficit["btc"], max_x_btc = 0.0, 0.0
     realized, need_cap = 0.0, 0.0
     pnl_m, max_x, logs, hourly = [], {b: 0.0 for b in books}, [], []
     binding = None
@@ -95,6 +102,25 @@ def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capit
                 logs.append(dict(month=m["month"], book=b, side="PUT" if kind == "P" else "CALL",
                                  size_x=notional / base, notional=notional, pnl=pnl,
                                  hedge_pnl=notional * x["hedge"], fills=x["fills"], deficit_after=deficit[b]))
+        bt_m = btc["months"][i] if btc is not None else None
+        if bt_m is not None:
+            size = btc["base"] + deficit["btc"] / bt_m["credit_net"]
+            size = min(math.ceil(size * 100 - 1e-9) / 100, btc["cap"])
+            pnl = size * bt_m["pnl"]
+            month_pnl += pnl
+            need_lo = need_lo + size * bt_m["max_loss"] * np.ones(len(bt_m["mtm"]))
+            need_hi = need_hi + size * bt_m["max_loss"] * np.ones(len(bt_m["mtm"]))
+            mtm_lo = mtm_lo + size * bt_m["mtm"]
+            mtm_hi = mtm_hi + size * bt_m["mtm"]
+            max_x_btc = max(max_x_btc, size)
+            deficit["btc"] = max(0.0, deficit["btc"] - pnl)
+            if detail:
+                logs.append(dict(month=m["month"], book="btc", side="SPREAD", size_x=size / btc["base"],
+                                 notional=size * bt_m["spot"], pnl=pnl, hedge_pnl=0.0, fills=0,
+                                 deficit_after=deficit["btc"], size_btc=size))
+        elif btc is not None and detail:
+            logs.append(dict(month=m["month"], book="btc", side="-", size_x=0.0, notional=0.0, pnl=0.0,
+                             hedge_pnl=0.0, fills=0, deficit_after=deficit["btc"], size_btc=0.0))
         worst_need = max(np.max(need_lo), np.max(need_hi)) if np.ndim(need_lo) else 0.0
         if capital is not None:
             if im_sum - realized > capital:                  # cannot afford the next step
@@ -112,6 +138,8 @@ def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capit
             hourly.append((realized, worst_mtm))
         realized += month_pnl
         pnl_m.append(month_pnl)
+    if btc is not None:
+        max_x["btc"] = max_x_btc / btc["base"]
     out = dict(capital=need_cap, pnl=np.array(pnl_m), total=realized, max_x=max_x, ruined=False)
     if detail:
         out["log"] = pd.DataFrame(logs)

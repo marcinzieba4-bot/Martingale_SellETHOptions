@@ -12,6 +12,9 @@ martingale sizing, where each month's size is set so the premium covers the loss
 
 **Results and conclusions: [results/REPORT.md](results/REPORT.md)**
 
+**ETH 1b + 3b combined with the BTC session's put spread (SellBTCPuts_3M): do they diversify, and the combined
+stats: [results/COMBO.md](results/COMBO.md)**
+
 **Chosen setup: 1b + 3b on one account, martingale, lean capital, with full risk statistics and a Monte Carlo of
 liquidation risk: [results/PORTFOLIO.md](results/PORTFOLIO.md)**
 
@@ -22,6 +25,8 @@ liquidation risk: [results/PORTFOLIO.md](results/PORTFOLIO.md)**
 | `report.py` | Runs the backtest and writes the charts and `results/REPORT.md` |
 | `portfolio.py` | 1b + 3b portfolio engine: combined hourly margin, lean capital, risk statistics, block-bootstrap Monte Carlo |
 | `portfolio_report.py` | Runs the portfolio and writes its charts and `results/PORTFOLIO.md` |
+| `btc/fetch_btc_spread.py` | Runs the BTC session's own code (SellBTCPuts_3M) to export its recommended put spread month by month into `btc/` |
+| `combo.py`, `combo_report.py` | ETH 1b + 3b + BTC put spread on one account: correlation, combined stats, joint crash stress, Monte Carlo, `results/COMBO.md` |
 
 ```bash
 pip install pandas numpy matplotlib
