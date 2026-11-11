@@ -71,7 +71,9 @@ def bs(s, k, t, vol, kind):
     return k * norm_cdf(-d2) - s * norm_cdf(-d1)
 
 
-def load(first_sale=FIRST_SALE):
+def load(first_sale=FIRST_SALE, transform=None):
+    """Monthly quotes `q` and hourly ETH data. `transform(q, eth)` may alter the raw prices first
+    (spot / strike / settle in q, OHLC and DVOL in eth): scenario.py uses it to insert a crash."""
     q = pd.read_csv(DATA / "atm_quotes.csv", parse_dates=["sell_date", "expiry"])
     px = pd.read_csv(DATA / "delivery_prices.csv", parse_dates=["date"]).set_index("date")["price"]
     eth = pd.read_csv(DATA / "eth_hourly.csv", parse_dates=["time"]).set_index("time").tz_localize(None)
@@ -81,6 +83,8 @@ def load(first_sale=FIRST_SALE):
     fund.index = fund.index - pd.Timedelta(hours=1)            # stamped at the end of the hour it covers
     eth["funding"] = fund.reindex(eth.index).fillna(0.0)
     q["settle"] = q.expiry.map(px)
+    if transform is not None:
+        q, eth = transform(q, eth)
     q["t_years"] = (q.expiry - q.sell_date).dt.days / 365.0
     q["iv"] = q.iv_median / 100
     for kind in ("P", "C"):
@@ -105,7 +109,7 @@ _PATHS = {}
 
 def month_path(eth, row, kind):
     """Per-1-ETH hourly path while the option is open (cached): prices, option marks and hedge state."""
-    key = (row.sell_date, kind)
+    key = (id(eth), row.sell_date, kind)     # per price history: scenarios use their own
     if key not in _PATHS:
         _PATHS[key] = _month_path(eth, row, kind)
     return _PATHS[key]

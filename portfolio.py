@@ -59,7 +59,7 @@ def month_table(q, eth):
     return months
 
 
-def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capital=None, btc=None):
+def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capital=None, btc=None, eth_cap=None):
     """Run the books over the month sequence `seq` (indices into `months`).
     Returns required capital, P&L per month and, with detail=True, logs and hourly MTM equity.
     With `capital` given, the account is liquidated the first hour its equity falls below
@@ -67,7 +67,8 @@ def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capit
     closed at that hour's worst price, trading stops, and `total` is what is left minus capital.
     `btc` adds the BTC put-spread book (see combo.py): dict(months=[per-month trade or None, aligned
     with `months`], base=BTC per leg, cap=max BTC per leg). It runs its own loss recovery; its
-    collateral is the spread's max loss (fully secured), its open P&L counts in equity."""
+    collateral is the spread's max loss (fully secured), its open P&L counts in equity.
+    `eth_cap` caps each ETH book's size at that multiple of the base (None = uncapped martingale)."""
     deficit = {b: 0.0 for b in books}
     if btc is not None:
         deficit["btc"], max_x_btc = 0.0, 0.0
@@ -88,6 +89,8 @@ def run(months, seq, books=("1b", "3b"), base=BASE_NOTIONAL, detail=False, capit
                 continue
             x = m[(kind, kind in hedge_sides)]
             notional = base + deficit[b] / x["prem"]
+            if eth_cap is not None:
+                notional = min(notional, eth_cap * base)
             pnl = notional * x["pnl"]
             month_pnl += pnl
             im_sum += notional * x["im"]

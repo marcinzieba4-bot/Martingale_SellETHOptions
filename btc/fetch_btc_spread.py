@@ -12,6 +12,9 @@ This script runs that repo's own code (real Deribit quotes, its fees and hourly 
 writes, per 1 BTC of spread:
   btc/btc_spread_trades.csv  - one row per trade (credit, max loss, P&L at expiry)
   btc/btc_spread_hourly.csv  - hourly mark-to-market P&L of every trade
+  btc/btc_perp_1h.csv        - hourly BTC-PERPETUAL close (for the crash scenarios, scenario.py)
+  btc/btc_put_quotes.csv     - every BTC put quote the BTC session pulled at a monthly roll (real
+                               Deribit trades), used to price spreads the scenarios add
 Run:  BTC_REPO=/path/to/SellBTCPuts_3M python3 btc/fetch_btc_spread.py
 """
 import os
@@ -61,6 +64,16 @@ def main():
     trades = pd.DataFrame(rows)
     trades.to_csv(HERE / "btc_spread_trades.csv", index=False, float_format="%.4f")
     pd.concat(hourly).to_csv(HERE / "btc_spread_hourly.csv", index=False, float_format="%.4f")
+
+    perp.rename("close").rename_axis("t").to_csv(HERE / "btc_perp_1h.csv", float_format="%.2f")
+    rows = []
+    for key, v in bt._trade_cache.items():
+        name, at = key.split("@")
+        parts = name.split("-")
+        if v and parts[-1] == "P":
+            rows.append(dict(instrument=name, entry=at, expiry_code=parts[1], strike=float(parts[2]),
+                             premium_usd=v["premium_usd"], index=v["index"]))
+    pd.DataFrame(rows).sort_values(["entry", "expiry_code", "strike"]).to_csv(HERE / "btc_put_quotes.csv", index=False)
 
     # check against the BTC session's own summary (results/put_spread.csv, variant C 20% wing)
     for mode in ("fixed", "base+cover"):
